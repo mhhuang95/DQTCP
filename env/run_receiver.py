@@ -17,7 +17,7 @@ def main():
     except KeyboardInterrupt:
         pass
     finally:
-    receiver.cleanup()
+        receiver.cleanup()
 
 if __name__ == "__main__":
     main()
