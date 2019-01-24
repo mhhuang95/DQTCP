@@ -11,8 +11,13 @@ import numpy as np
 import datagram_pb2
 import project_root
 from helpers.helpers import (
-    curr_ts_ms, apply_op,
-    READ_FLAGS, ERR_FLAGS, READ_ERR_FLAGS, WRITE_FLAGS, ALL_FLAGS)
+    curr_ts_ms, apply_op)
+
+READ_FLAGS = select.POLLIN | select.POLLPRI
+WRITE_FLAGS = select.POLLOUT
+ERR_FLAGS = select.POLLERR | select.POLLHUP | select.POLLNVAL
+READ_ERR_FLAGS = READ_FLAGS | ERR_FLAGS
+ALL_FLAGS = READ_FLAGS | WRITE_FLAGS | ERR_FLAGS
 
 
 def format_actions(action_list):
@@ -113,4 +118,162 @@ class Sender(object):
 
         self.sample_action = sample_action
 
-    
+    def update_state(self, ack):
+
+        self.next_ack = max(self.next_ack, ack.seq_num + 1)
+        curr_time_ms = curr_ts_ms()
+
+        rtt = float(curr_time_ms - ack.send_ts)
+        self.min_rtt = min(self.min_rtt, rtt)
+
+        if self.train:
+            if self.ts_first is None:
+                self.ts_first = curr_time_ms
+            self.rtt_buf.append(rtt)
+
+        delay = rtt - self.min_rtt
+        if self.delay_ewma is None:
+            self.delay_ewma = delay
+        else:
+            self.delay_ewma = 0.875 * self.delay_ewma + 0.125 * delay
+
+
+        # Update BBR's delivery rate
+        self.delivered += ack.ack_bytes
+        self.delivered_time = curr_time_ms
+        delivery_rate = (0.008 * (self.delivered - ack.delivered) /
+                         max(1, self.delivered_time - ack.delivered_time))
+
+        if self.delivery_rate_ewma is None:
+            self.delivery_rate_ewma = delivery_rate
+        else:
+            self.delivery_rate_ewma = (
+                0.875 * self.delivery_rate_ewma + 0.125 * delivery_rate)
+
+
+        # Update Vegas sending rate
+        send_rate = 0.008 * (self.sent_bytes - ack.sent_bytes) / max(1, rtt)
+
+        if self.send_rate_ewma is None:
+            self.send_rate_ewma = send_rate
+        else:
+            self.send_rate_ewma = (
+                0.875 * self.send_rate_ewma + 0.125 * send_rate)
+
+    def take_action(self, action_idx):
+        old_cwnd = self.cwnd
+        op, val = self.action_mapping[action_idx]
+
+        self.cwnd = apply_op(op,self.cwnd, val)
+        self.cwnd = max(2.0, self.cwnd)
+
+    def window_is_open(self):
+        return self.seq_num - self.next_ack < self.cwnd
+
+    def send(self):
+        data = datagram_pb2.Data()
+        data.seq_num = self.seq_num
+        data.sned_ts = curr_ts_ms
+        data.send_bytes = self.sent_bytes
+        data.delivered_time = self.delivered_time
+        data.delivered = self.delivered
+        data.payload = self.dummy_payload
+
+        serialized_data = data.SerializeToString()
+        self.sock.sendto(serialized_data, self.peer_addr)
+
+        self.seq_num += 1
+        self.sent_bytes += len(serialized_data)
+
+    def recv(self):
+        serialized_ack, addr = self.sock.recvfrom(1600)
+
+        if addr != self.peer_addr:
+            return
+
+        ack = datagram_pb2.Ack()
+        ack.ParseFromString(serialized_ack)
+
+        self.update_state(ack)
+
+        if self.step_start_ms is None:
+            self.step_start_ms = curr_ts_ms
+
+        # At each step end, feed the state:
+        if curr_ts_ms() - self.step_start_ms > self.step_len_ms:  # step's end
+            state = [self.delay_ewma,
+                     self.delivery_rate_ewma,
+                     self.send_rate_ewma,
+                     self.cwnd]
+
+
+            # time how long it takes to get an action from the NN
+            if self.debug:
+                start_sample = time.time()
+
+            action = self.sample_action(state)
+
+            if self.debug:
+                self.sampling_file.write('%.2f ms\n' % ((time.time() - start_sample) * 1000))
+
+            self.take_action(action)
+
+            self.delay_ewma = None
+            self.delivery_rate_ewma = None
+            self.send_rate_ewma = None
+
+            self.step_start_ms = curr_ts_ms()
+
+            if self.train:
+                self.step_cnt += 1
+                if self.step_cnt >= Sender.max_steps:
+                    self.step_cnt = 0
+                    self.running = False
+
+                    self.compute_performance()
+
+    def compute_performance(self):
+        duration = curr_ts_ms() - self.ts_first
+        tput = 0.008 * self.delivered / duration
+        #Compute the qth percentile of the data along the specified axis.
+        perc_delay = np.percentile(self.rtt_buf, 95)
+
+        with open(path.join(project_root.DIR, 'env', 'perf'), 'a', 0) as perf:
+            perf.write('%.2f %d\n' % (tput, perc_delay))
+
+
+    def run(self):
+        TIMEOUT = 1000
+
+        self.poller.modify(self.sock, ALL_FLAGS)
+        curr_flags = ALL_FLAGS
+
+        while self.running:
+            if self.window_is_open():
+                if curr_flags != ALL_FLAGS:
+                    self.poller.modify(self.sock, ALL_FLAGS)
+                    curr_flags = ALL_FLAGS
+            else:
+                if curr_flags != READ_ERR_FLAGS:
+                    self.poller.modify(self.sock, READ_ERR_FLAGS)
+                    curr_flags = READ_ERR_FLAGS
+
+            #Polls the set of registered file descriptors, and returns a possibly-empty list containing (fd, event) 2-tuples for the descriptors that have events or errors to report.
+            events = self.poller.poll(TIMEOUT)
+
+            if not events:  # timed out
+                self.send()
+
+            for fd, flag in events:
+                #fileno() :Return the socket’s file descriptor (a small integer).
+                assert self.sock.fileno() == fd
+
+                if flag & ERR_FLAGS:
+                    sys.exit('Error occurred to the channel')
+
+                if flag & READ_FLAGS:
+                    self.recv()
+
+                if flag & WRITE_FLAGS:
+                    if self.window_is_open():
+                        self.send()
