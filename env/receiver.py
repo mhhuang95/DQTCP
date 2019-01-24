@@ -40,10 +40,56 @@ class Receiver(object):
         return ack.SerializeToString()
 
     def handshake(self):
+        # non-blocking UDP socket
+        self.sock.setblocking(0)
 
+        TIMEOUT = 1000
 
+        retry_times = 0
+        self.poller.modify(self.sock, READ_ERR_FLAGS)
 
+        while True:
+            self.sock.sendto("Hello from receiver", self.peer_addr)
+            events = self.poller.poll(TIMEOUT)
 
+            if not events:
+                retry_times += 1
+                if retry_times > 10:
+                    sys.stderr.write('[receiver] Handshake failed after 10 retries\n')
+                    return
+                else:
+                    sys.stderr.write('[receiver] Handshake timed out and retrying...\n')
+                    continue
+
+            for fd, flag in events:
+                assert self.sock.fileno == fd
+
+                if flag & ERR_FLAGS:
+                    sys.exit('Channel closed ot error occured')
+
+                if flag & READ_FLAGS:
+
+                    msg, addr = self.sock.recvfrom(1600)
+                    if addr == self.peer_addr:
+                        if msg != 'Hello from sender':
+                            # 'Hello from sender' was presumably lost
+                            # received subsequent data from peer sender
+                            ack = self.construct_ack_from_data(msg)
+                            if ack is not None:
+                                self.sock.sendto(ack, self.peer_addr)
+
+                        return
+
+    def run(self):
+        self.sock.setblocking(1)
+
+        while True:
+            serialized_data, addr = self.sock.recvfrom(1600)
+
+            if addr == self.peer_addr:
+                ack = self.construct_ack_from_data(serialized_data)
+                if ack is not None:
+                    self.sock.sendto(ack, self.peer_addr)
 
 
 
