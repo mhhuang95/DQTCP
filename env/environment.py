@@ -42,4 +42,28 @@ class Environment(object):
         recv_cmd = 'python %s $MAHIMAHI_BASE %s' % (receiver_src, self.port)
         cmd = "%s -- sh -c '%s'" % (self.mahimahi_cmd, recv_cmd)
         sys.stderr.write('$ %s\n' % cmd)
+        #Popen: Execute a child program in a new process.
+        #preexec_fn is set to a callable object, this object will be called in the child process just before the child is executed. (Unix only)
+        #os.setsid: To keep the child process running while the parent process exit.
         self.receiver = Popen(cmd, preexec_fn=os.setsid, shell=True)
+
+        # sender completes the handshake sent from receiver
+        self.sender.handshake()
+
+    def rollout(self):
+        sys.stderr.write('Obtaining an episode from environment...\n')
+        self.sender.run()
+
+    def cleanup(self):
+        if self.sender:
+            self.sender.cleanup()
+            self.sender = None
+
+        if self.receiver:
+            try:
+                os.killpg(os.getpgid(self.receiver.pid), signal.SIGTERM)
+            except OSError as e:
+                sys.stderr.write('%s ' % e)
+            finally:
+                self.receiver = None
+
