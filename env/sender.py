@@ -53,7 +53,7 @@ class Sender(object):
         #Register a file descriptor with the polling object.
         self.poller.register(self.sock, ALL_FLAGS)
 
-        self.dummy_payload = 'x' * 1400
+        self.dummy_payload = '1' * 1400
 
         if self.debug:
             self.sampling_file = open(path.join(project_root.DIR, 'env', 'sampling_time'), 'w', 0)
@@ -95,13 +95,13 @@ class Sender(object):
 
 
         while True:
-            print("test")
+
             #Receive data from the socket. The return value is a pair (string, address)
             # where string is a string representing the data received and address is the address of the socket sending the data.
             msg, addr = self.sock.recvfrom(1600)
             print(msg)
 
-            if msg == 'Hello form receiver' and self.peer_addr == None:
+            if msg == 'Hello from receiver' and self.peer_addr == None:
                 self.peer_addr = addr
                 self.sock.sendto('Hello from sender', self.peer_addr)
                 sys.stderr.write('[sender] Handshake success! '
@@ -170,8 +170,8 @@ class Sender(object):
     def send(self):
         data = datagram_pb2.Data()
         data.seq_num = self.seq_num
-        data.sned_ts = curr_ts_ms
-        data.send_bytes = self.sent_bytes
+        data.send_ts = curr_ts_ms()
+        data.sent_bytes = self.sent_bytes
         data.delivered_time = self.delivered_time
         data.delivered = self.delivered
         data.payload = self.dummy_payload
@@ -194,7 +194,7 @@ class Sender(object):
         self.update_state(ack)
 
         if self.step_start_ms is None:
-            self.step_start_ms = curr_ts_ms
+            self.step_start_ms = curr_ts_ms()
 
         # At each step end, feed the state:
         if curr_ts_ms() - self.step_start_ms > self.step_len_ms:  # step's end
