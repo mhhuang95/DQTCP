@@ -20,7 +20,7 @@ math_ops = {
     '+': operator.add,
     '-': operator.sub,
     '*': operator.mul,
-    '/': operator.div,
+    '/': operator.truediv,
 }
 
 def apply_op(op, op1, op2):
@@ -38,7 +38,7 @@ def get_open_udp_port():
     s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 
     s.bind(('', 0))
-    #getsockname():Return the socket’s own address. This is useful to find out the port number of an IPv4/v6 socket, for instance
+    #getsockname():Return the socket's own address. This is useful to find out the port number of an IPv4/v6 socket, for instance
     port = s.getsockname()[1]
     s.close()
     return port
