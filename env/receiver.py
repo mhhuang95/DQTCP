@@ -1,6 +1,5 @@
 #adjusted from https://github.com/StanfordSNR/indigo/blob/master/env/receiver.py
 
-
 import sys
 import json
 import socket
@@ -62,7 +61,8 @@ class Receiver(object):
                     continue
 
             for fd, flag in events:
-                assert self.sock.fileno == fd
+                assert self.sock.fileno() == fd
+
 
                 if flag & ERR_FLAGS:
                     sys.exit('Channel closed ot error occured')
@@ -70,7 +70,10 @@ class Receiver(object):
                 if flag & READ_FLAGS:
 
                     msg, addr = self.sock.recvfrom(1600)
+
+                    print(addr, self.peer_addr)
                     if addr == self.peer_addr:
+
                         if msg != 'Hello from sender':
                             # 'Hello from sender' was presumably lost
                             # received subsequent data from peer sender
@@ -90,9 +93,4 @@ class Receiver(object):
                 ack = self.construct_ack_from_data(serialized_data)
                 if ack is not None:
                     self.sock.sendto(ack, self.peer_addr)
-
-
-
-
-
 
