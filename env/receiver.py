@@ -15,7 +15,7 @@ class Receiver(object):
 
         #UDP socket and poller
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR)
+        self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR,1)
 
         self.poller = select.poll()
         self.poller.register(self.sock, ALL_FLAGS)
