@@ -2,7 +2,7 @@ from os import path
 import sys
 import numpy as np
 import project_root
-from env.environment import Environment
+from environment import Environment
 
 
 def create_env():
@@ -33,7 +33,7 @@ class Learner(object):
         self.env.cleanup()
 
     def run(self):
-        for episode_i in range(1, 3):
+        for episode_i in xrange(1, 3):
             sys.stderr.write('--- Episode %d\n' % episode_i)
             self.env.reset()
 
