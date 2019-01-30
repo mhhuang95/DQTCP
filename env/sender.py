@@ -11,14 +11,8 @@ import numpy as np
 import datagram_pb2
 import project_root
 from helpers.helpers import (
-    curr_ts_ms, apply_op)
-
-READ_FLAGS = select.POLLIN | select.POLLPRI
-WRITE_FLAGS = select.POLLOUT
-ERR_FLAGS = select.POLLERR | select.POLLHUP | select.POLLNVAL
-READ_ERR_FLAGS = READ_FLAGS | ERR_FLAGS
-ALL_FLAGS = READ_FLAGS | WRITE_FLAGS | ERR_FLAGS
-
+    curr_ts_ms, apply_op,
+    READ_FLAGS, ERR_FLAGS, READ_ERR_FLAGS, WRITE_FLAGS, ALL_FLAGS)
 
 def format_actions(action_list):
     """ Returns the action list, initially a list with elements "[op][val]"
@@ -51,7 +45,7 @@ class Sender(object):
         #Bind the socket to address.
         self.sock.bind(('0.0.0.0', port))
 
-        #getsockname():Return the socket’s own address.
+        #getsockname : Return the socket's own address
         sys.stderr.write('[sender] Listening on port %s\n' %self.sock.getsockname()[1])
 
         # Returns a polling object, which supports registering and unregistering file descriptors, and then polling them for I/O events
@@ -91,7 +85,7 @@ class Sender(object):
             self.ts_first = None
             self.rtt_buf = []
 
-    def clean_up(self):
+    def cleanup(self):
         if self.debug and self.sampling_file:
             self.sampling_file.close()
         self.sock.close()
@@ -99,10 +93,13 @@ class Sender(object):
     def handshake(self):
         #handshake with peer receiver. Must be called before run()
 
+
         while True:
+            print("test")
             #Receive data from the socket. The return value is a pair (string, address)
             # where string is a string representing the data received and address is the address of the socket sending the data.
             msg, addr = self.sock.recvfrom(1600)
+            print(msg)
 
             if msg == 'Hello form receiver' and self.peer_addr == None:
                 self.peer_addr = addr
@@ -265,7 +262,7 @@ class Sender(object):
                 self.send()
 
             for fd, flag in events:
-                #fileno() :Return the socket’s file descriptor (a small integer).
+                #fileno():Return the socket's file descriptor (a small integer)
                 assert self.sock.fileno() == fd
 
                 if flag & ERR_FLAGS:
