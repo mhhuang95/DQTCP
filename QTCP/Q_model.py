@@ -7,7 +7,7 @@ import os
 num_actions = 5
 
 class Q_network(object):
-    def __init__(self,):
+    def __init__(self, state_dim, action_cnt):
         self.state = tf.placeholder(shape=[None, 5], dtype=tf.int32)
         xavier_init = tf.contrib.layers.xavier_initializer()
         self.fc1w = tf.Variable(xavier_init([5, 64]))
