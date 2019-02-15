@@ -4,11 +4,9 @@ import tensorflow.contrib.slim as slim
 import random
 import os
 
-num_actions = 5
-
 class Q_network(object):
     def __init__(self, state_dim, action_cnt):
-        self.state = tf.placeholder(shape=[None, 5], dtype=tf.int32)
+        self.state = tf.placeholder(shape=[None, state_dim], dtype=tf.int32)
         xavier_init = tf.contrib.layers.xavier_initializer()
         self.fc1w = tf.Variable(xavier_init([5, 64]))
         self.fc1b = tf.Variable(xavier_init([None,64]))
@@ -25,7 +23,7 @@ class Q_network(object):
         self.streamAC, self.streamVC = tf.split(self.fc3, 2, 0)
         self.streamA = slim.flatten(self.streamAC)
         self.streamV = slim.flatten(self.streamVC)
-        self.AW = tf.Variable(xavier_init([64, num_actions]))
+        self.AW = tf.Variable(xavier_init([64, action_cnt]))
         self.VW = tf.Variable(xavier_init([64, 1]))
         self.Advantage = tf.matmul(self.streamA, self.AW)
         self.Value = tf.matmul(self.streamV, self.VW)
@@ -35,7 +33,7 @@ class Q_network(object):
 
         self.targetQ = tf.placeholder(shape=[None], dtype=tf.float32)
         self.actions = tf.placeholder(shape=[None], dtype=tf.int32)
-        self.actions_onehot = tf.one_hot(self.actions, num_actions, dtype=tf.float32)
+        self.actions_onehot = tf.one_hot(self.actions, action_cnt, dtype=tf.float32)
 
         self.Q = tf.reduce_sum(tf.multiply(self.Qout, self.actions_onehot), axis=1)
 
