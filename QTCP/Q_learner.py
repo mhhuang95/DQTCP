@@ -78,6 +78,7 @@ class Learner(object):
 
 
         self.env = env
+        self.sess.run(self.init)
 
     def updateTargetGraph(self,tfVars, tau):
         total_vars = len(tfVars)
@@ -116,10 +117,22 @@ class Learner(object):
         return action
 
     def update_model(self):
+        trainBatch = self.myBuffer.sample(self.batch_size)
+        Q1 = self.sess.run(self.mainQN.predict, feed_dict={self.mainQN.scalarInput: np.vstack(trainBatch[:, 3])})
+        Q2 = self.sess.run(self.targetQN.Qout, feed_dict={self.targetQN.scalarInput: np.vstack(trainBatch[:, 3])})
+
+        end_multiplier = -(trainBatch[:, 4] - 1)
+        doubleQ = Q2[xrange(self.batch_size), Q1]
+        targetQ = trainBatch[:, 2] + (self.y * doubleQ * end_multiplier)
+
+        _ = self.sess.run(self.mainQN.updateModel,
+                          feed_dict={self.mainQN.scalarInput: np.vstack(trainBatch[:, 0]), self.mainQN.targetQ: targetQ,
+                                     self.mainQN.actions: trainBatch[:, 1]})
+
+        self.updateTarget(self.targetOps, self.sess)
 
 
     def run(self):
-        self.sess.run(self.init)
 
         for i in xrange(self.num_episode):
             episodeBuffer = experience_buffer()
@@ -135,19 +148,7 @@ class Learner(object):
                 episodeBuffer.add(np.reshape(np.array([state,action,reward,state_1,done]),[1,5]))
 
                 if self.total_steps % (self.update_freq) == 0:
-                    trainBatch = self.myBuffer.sample(self.batch_size)
-                    Q1 = self.sess.run(self.mainQN.predict, feed_dict={self.mainQN.scalarInput: np.vstack(trainBatch[:, 3])})
-                    Q2 = self.sess.run(self.targetQN.Qout, feed_dict={self.targetQN.scalarInput: np.vstack(trainBatch[:, 3])})
-
-                    end_multiplier = -(trainBatch[:, 4] - 1)
-                    doubleQ = Q2[xrange(self.batch_size), Q1]
-                    targetQ = trainBatch[:, 2] + (self.y * doubleQ * end_multiplier)
-
-                    _ = self.sess.run(self.mainQN.updateModel,
-                                 feed_dict={self.mainQN.scalarInput: np.vstack(trainBatch[:, 0]), self.mainQN.targetQ: targetQ,
-                                            self.mainQN.actions: trainBatch[:, 1]})
-
-                    self.updateTarget(self.targetOps,self.sess)
+                    self.update_model()
 
                 self.rAll += reward
                 state = state_1
@@ -165,26 +166,3 @@ class Learner(object):
     def cleanup(self):
         self.env.cleanup()
 
-
-
-
-
-
-
-
-
-
-
-    def run(self):
-        for episode_i in xrange(1, 3):
-            sys.stderr.write('--- Episode %d\n' % episode_i)
-            self.env.reset()
-
-            # get an episode of experience
-            self.env.rollout()
-
-            # update model
-            self.update_model()
-
-    def update_model(self):
-        sys.stderr.write('Updating model...\n')
