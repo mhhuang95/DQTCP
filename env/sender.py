@@ -79,6 +79,8 @@ class Sender(object):
         self.step_start_ms = None
         self.running = True
 
+        self.utility = 0
+
         if self.train:
             self.step_cnt = 0
 
@@ -99,7 +101,7 @@ class Sender(object):
             #Receive data from the socket. The return value is a pair (string, address)
             # where string is a string representing the data received and address is the address of the socket sending the data.
             msg, addr = self.sock.recvfrom(1600)
-            print(msg)
+            #print(msg)
 
             if msg == 'Hello from receiver' and self.peer_addr == None:
                 self.peer_addr = addr
@@ -202,7 +204,7 @@ class Sender(object):
                      self.delivery_rate_ewma,
                      self.send_rate_ewma,
                      self.cwnd]
-
+            #print(state)
 
             # time how long it takes to get an action from the NN
             if self.debug:
@@ -221,22 +223,36 @@ class Sender(object):
 
             self.step_start_ms = curr_ts_ms()
 
+            done = False
             if self.train:
                 self.step_cnt += 1
+                reward = self.compute_performance()
                 if self.step_cnt >= Sender.max_steps:
                     self.step_cnt = 0
                     self.running = False
+                    done = True
 
-                    self.compute_performance()
+                return state, reward, done
+
 
     def compute_performance(self):
         duration = curr_ts_ms() - self.ts_first
         tput = 0.008 * self.delivered / duration
         #Compute the qth percentile of the data along the specified axis.
         perc_delay = np.percentile(self.rtt_buf, 95)
+        util = self.utility
+        self.utility = tput - 0.1*perc_delay
 
         with open(path.join(project_root.DIR, 'env', 'perf'), 'a', 0) as perf:
             perf.write('%.2f %d\n' % (tput, perc_delay))
+        print '%.2f %d\n' % (tput, perc_delay)
+        if self.utility - util  > 1:
+            reward = 1
+        elif self.utility - util  < -1:
+            reward = -1
+        else:
+            reward = 0
+        return reward
 
 
     def run(self):
