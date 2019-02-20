@@ -6,7 +6,7 @@ from environment import Environment
 
 
 def create_env():
-    uplink_trace = path.join(project_root.DIR, 'env', '12mbps.trace')
+    uplink_trace = path.join(project_root.DIR, 'env', '114.68mbps.trace')
     downlink_trace = uplink_trace
     mahimahi_cmd = (
         'mm-delay 20 mm-link %s %s '
@@ -35,7 +35,7 @@ class Learner(object):
     def run(self):
         for episode_i in xrange(1, 3):
             sys.stderr.write('--- Episode %d\n' % episode_i)
-            self.env.reset()
+            s = self.env.reset()
 
             # get an episode of experience
             self.env.rollout()
