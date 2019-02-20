@@ -46,9 +46,10 @@ class Receiver(object):
 
         retry_times = 0
         self.poller.modify(self.sock, READ_ERR_FLAGS)
+        #print(self.peer_addr)
 
         while True:
-            self.sock.sendto("Hello from receiver", self.peer_addr)
+            self.sock.sendto('Hello from receiver', self.peer_addr)
             events = self.poller.poll(TIMEOUT)
 
             if not events:
@@ -71,7 +72,7 @@ class Receiver(object):
 
                     msg, addr = self.sock.recvfrom(1600)
 
-                    print(addr, self.peer_addr)
+                    #print(addr, self.peer_addr)
                     if addr == self.peer_addr:
 
                         if msg != 'Hello from sender':
@@ -88,7 +89,7 @@ class Receiver(object):
 
         while True:
             serialized_data, addr = self.sock.recvfrom(1600)
-
+            #print(serialized_data)
             if addr == self.peer_addr:
                 ack = self.construct_ack_from_data(serialized_data)
                 if ack is not None:
