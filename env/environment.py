@@ -49,6 +49,8 @@ class Environment(object):
 
         # sender completes the handshake sent from receiver
         self.sender.handshake()
+        state = [self.sender.delay_ewma, self.sender.send_rate_ewma, self.sender.delivery_rate_ewma, self.sender.cwnd]
+        return state
 
     def rollout(self):
         sys.stderr.write('Obtaining an episode from environment...\n')
