@@ -10,9 +10,26 @@ from os import path
 import numpy as np
 import datagram_pb2
 import project_root
+import random
 from helpers.helpers import (
-    curr_ts_ms, apply_op,
+    curr_ts_ms, apply_op, normalize,one_hot,
     READ_FLAGS, ERR_FLAGS, READ_ERR_FLAGS, WRITE_FLAGS, ALL_FLAGS)
+
+
+
+class experience_buffer():
+    def __init__(self, buffer_size=100000):
+        self.buffer = []
+        self.buffer_size = buffer_size
+
+    def add(self, experience):
+        if len(self.buffer) + len(experience) >= self.buffer_size:
+            self.buffer[0:(len(experience) + len(self.buffer)) - self.buffer_size] = []
+        self.buffer.extend(experience)
+
+    def sample(self, size):
+        return np.reshape(np.array(random.sample(self.buffer, size)), [size, 5])
+
 
 def format_actions(action_list):
     """ Returns the action list, initially a list with elements "[op][val]"
@@ -58,7 +75,6 @@ class Sender(object):
         if self.debug:
             self.sampling_file = open(path.join(project_root.DIR, 'env', 'sampling_time'), 'w', 0)
 
-
         #congestion control related
         self.seq_num = 0
         self.next_ack = 0
@@ -80,6 +96,8 @@ class Sender(object):
         self.running = True
 
         self.utility = 0
+        self.action = 0
+        self.state = [200,200,200,5000]
 
         if self.train:
             self.step_cnt = 0
@@ -193,14 +211,18 @@ class Sender(object):
         ack = datagram_pb2.Ack()
         ack.ParseFromString(serialized_ack)
 
+        action = self.action
+
         self.update_state(ack)
 
         if self.step_start_ms is None:
             self.step_start_ms = curr_ts_ms()
 
+        done = False
+        reward = 0
         # At each step end, feed the state:
         if curr_ts_ms() - self.step_start_ms > self.step_len_ms:  # step's end
-            state = [self.delay_ewma,
+            self.state = [self.delay_ewma,
                      self.delivery_rate_ewma,
                      self.send_rate_ewma,
                      self.cwnd]
@@ -210,16 +232,22 @@ class Sender(object):
             if self.debug:
                 start_sample = time.time()
 
-            action = self.sample_action(state)
+            norm_state = normalize(self.state)
+            one_hot_action = one_hot(self.action, self.action_cnt)
+            state = norm_state + one_hot_action
+
+            self.action = self.sample_action(state)
 
             if self.debug:
                 self.sampling_file.write('%.2f ms\n' % ((time.time() - start_sample) * 1000))
 
-            self.take_action(action)
+            self.take_action(self.action)
 
+            '''
             self.delay_ewma = None
             self.delivery_rate_ewma = None
             self.send_rate_ewma = None
+            '''
 
             self.step_start_ms = curr_ts_ms()
 
@@ -231,8 +259,9 @@ class Sender(object):
                     self.step_cnt = 0
                     self.running = False
                     done = True
+                #print self.state,self.action, reward, done
 
-                return state, reward, done
+        return self.state, action, reward, done
 
 
     def compute_performance(self):
@@ -243,23 +272,27 @@ class Sender(object):
         util = self.utility
         self.utility = tput - 0.1*perc_delay
 
+
         with open(path.join(project_root.DIR, 'env', 'perf'), 'a', 0) as perf:
             perf.write('%.2f %d\n' % (tput, perc_delay))
-        print '%.2f %d\n' % (tput, perc_delay)
-        if self.utility - util  > 1:
+
+        if self.utility - util  > 0.01:
             reward = 1
-        elif self.utility - util  < -1:
+        elif self.utility - util  < -0.01:
             reward = -1
         else:
             reward = 0
+        #print(tput, perc_delay, self.utility, reward)
         return reward
 
 
     def run(self):
         TIMEOUT = 1000
+        buffer = experience_buffer()
 
         self.poller.modify(self.sock, ALL_FLAGS)
         curr_flags = ALL_FLAGS
+        rall = 0
 
         while self.running:
             if self.window_is_open():
@@ -285,8 +318,23 @@ class Sender(object):
                     sys.exit('Error occurred to the channel')
 
                 if flag & READ_FLAGS:
-                    self.recv()
+                    s0 = self.state
+                    norm_state = normalize(s0)
+                    one_hot_action = one_hot(self.action, self.action_cnt)
+                    s0 = norm_state + one_hot_action
+
+                    s1, action, reward, done = self.recv()
+
+                    norm_state = normalize(s1)
+                    one_hot_action = one_hot(self.action, self.action_cnt)
+                    s1 = norm_state + one_hot_action
+
+                    buffer.add([[s0,action,reward,s1,done]])
+
+                    rall += reward
 
                 if flag & WRITE_FLAGS:
                     if self.window_is_open():
                         self.send()
+
+        return buffer, rall

@@ -64,7 +64,6 @@ class Receiver(object):
             for fd, flag in events:
                 assert self.sock.fileno() == fd
 
-
                 if flag & ERR_FLAGS:
                     sys.exit('Channel closed ot error occured')
 
@@ -94,4 +93,3 @@ class Receiver(object):
                 ack = self.construct_ack_from_data(serialized_data)
                 if ack is not None:
                     self.sock.sendto(ack, self.peer_addr)
-

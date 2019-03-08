@@ -54,7 +54,7 @@ class Environment(object):
 
     def rollout(self):
         sys.stderr.write('Obtaining an episode from environment...\n')
-        self.sender.run()
+        return self.sender.run()
 
     def cleanup(self):
         if self.sender:

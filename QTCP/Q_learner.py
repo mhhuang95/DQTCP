@@ -64,9 +64,6 @@ class Learner(object):
         self.action_cnt = env.action_cnt
         self.prev_action = env.action_cnt - 1
 
-
-
-
         with tf.variable_scope('global'):
             self.mainQN = Q_network(state_dim=self.aug_state_dim, action_cnt=self.action_cnt)
             self.targetQN = Q_network(state_dim=self.aug_state_dim, action_cnt=self.action_cnt)
